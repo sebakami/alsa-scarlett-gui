@@ -62,6 +62,10 @@ gtk_dial_scroll_controller_scroll (GtkEventControllerScroll *scroll,
                                     double                    dy,
                                     GtkDial                  *dial);
 
+static void                                    
+gtk_dial_focus_change_cb (GtkEventControllerFocus *controller,
+                          GtkDial *dial);
+
 static void gtk_dial_dispose(GObject *o);
 
 typedef enum {
@@ -308,13 +312,17 @@ static void gtk_dial_class_init(GtkDialClass *klass)
                   G_TYPE_NONE, 1,
                   GTK_TYPE_SCROLL_TYPE);
 
-    add_slider_binding (w_class, binding_set, GDK_KEY_Left, 0,
+    /*add_slider_binding (w_class, binding_set, GDK_KEY_Left, 0,
                       GTK_SCROLL_STEP_LEFT);
     add_slider_binding (w_class, binding_set, GDK_KEY_Down, 0,
                       GTK_SCROLL_STEP_LEFT);
     add_slider_binding (w_class, binding_set, GDK_KEY_Right, 0,
                       GTK_SCROLL_STEP_RIGHT);
     add_slider_binding (w_class, binding_set, GDK_KEY_Up, 0,
+                      GTK_SCROLL_STEP_RIGHT);*/
+    add_slider_binding (w_class, binding_set, GDK_KEY_Page_Down, 0,
+                      GTK_SCROLL_STEP_LEFT);
+    add_slider_binding (w_class, binding_set, GDK_KEY_Page_Up, 0,
                       GTK_SCROLL_STEP_RIGHT);
 }
 
@@ -324,6 +332,8 @@ static void gtk_dial_init(GtkDial *dial)
     gtk_dial_set_style(dial, "#cdc7c2", "#f0f0f0", "#3584e4", "#808080");
     //gdk_rgba_parse(&dial->colors.trough_border, "#cdc7c2");
     gtk_widget_set_focusable (GTK_WIDGET (dial), TRUE);
+    gtk_widget_set_focus_on_click(GTK_WIDGET (dial), TRUE);
+    gtk_widget_set_can_focus (GTK_WIDGET (dial), TRUE);
     //gtk_widget_set_parent(dial->slider_container, GTK_WIDGET(dial) );
 
     dial->adj = NULL;
@@ -354,6 +364,12 @@ static void gtk_dial_init(GtkDial *dial)
     g_signal_connect (dial->scroll_controller, "scroll",
                         G_CALLBACK (gtk_dial_scroll_controller_scroll), dial);
     gtk_widget_add_controller (GTK_WIDGET (dial), dial->scroll_controller);
+    
+    GtkEventController* controller = gtk_event_controller_focus_new ();
+    g_signal_connect (controller, "enter", G_CALLBACK (gtk_dial_focus_change_cb), dial);
+    g_signal_connect (controller, "leave", G_CALLBACK (gtk_dial_focus_change_cb), dial);
+    gtk_widget_add_controller (GTK_WIDGET (dial), controller);
+
 }
 
 static void dial_measure(GtkWidget *widget,
@@ -381,7 +397,10 @@ static void dial_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
     cairo_t *cr = gtk_snapshot_append_cairo(snapshot, &GRAPHENE_RECT_INIT(0, 0, p.w, p.h) );
 
     // draw border
-    cairo_set_line_width(cr, 2);
+    if (gtk_widget_has_visible_focus(widget))
+      cairo_set_line_width(cr, 6);
+    else
+      cairo_set_line_width(cr, 2);
     gdk_cairo_set_source_rgba(cr, &dial->colors.trough_border);
     cairo_arc(cr, p.cx, p.cy, p.radius-p.thickness, RAD_START, RAD_END/*8*M_PI/5*/);
     cairo_line_to(cr, V1x*(p.radius-p.thickness) + p.cx, V1y*(p.radius-p.thickness) + p.cy);
@@ -803,6 +822,9 @@ gtk_dial_click_gesture_pressed (GtkGestureClick *gesture,
             set_value(dial, dial->zero_db);
         return;
     }
+    
+    if (gtk_widget_get_focus_on_click(GTK_WIDGET(dial)) && !gtk_widget_has_focus(GTK_WIDGET(dial)))
+      gtk_widget_grab_focus(GTK_WIDGET(dial));
 
     struct dial_properties p;
     get_dial_properties(dial, &p);
@@ -830,6 +852,14 @@ gtk_dial_scroll_controller_scroll (GtkEventControllerScroll *scroll,
 
     return GDK_EVENT_STOP;
 }
+
+static void
+gtk_dial_focus_change_cb (GtkEventControllerFocus *controller,
+                          GtkDial *dial)
+{
+  gtk_widget_queue_draw(GTK_WIDGET(dial));
+}
+
 
 void gtk_dial_dispose(GObject *o)
 {
